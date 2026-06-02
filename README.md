@@ -1,5 +1,13 @@
 # OpenBenchmark
 
+[![Benchmark & Deploy](https://github.com/agi-wang/openbenchmark/actions/workflows/benchmark.yml/badge.svg)](https://github.com/agi-wang/openbenchmark/actions/workflows/benchmark.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-c6f135)](LICENSE)
+[![Live demo](https://img.shields.io/badge/demo-openbenchmark.pages.dev-34dada)](https://openbenchmark.pages.dev)
+[![Node ≥20.6](https://img.shields.io/badge/node-%E2%89%A520.6-3fb950?logo=node.js&logoColor=white)](https://nodejs.org)
+![Zero dependencies](https://img.shields.io/badge/deps-0-7aa2ff)
+
+**English** · [中文说明](#中文说明)
+
 > Multi-provider LLM inference benchmark — a **static, self-updating dashboard** that measures and compares **throughput (TPS)** and **latency (TTFT)** across LLM API providers.
 
 ![OpenBenchmark dashboard](docs/screenshot.png)
@@ -234,5 +242,124 @@ data/results.ndjson             append-only data (git as the database)
 - Only the built `dist/` is published to Pages; it contains aggregated metrics — no secrets, and no raw upstream error bodies (those are scrubbed before they’re stored and never appear in the published JSON).
 
 ## License
+
+[MIT](LICENSE)
+
+---
+
+# 中文说明
+
+> 多供应商 LLM 推理基准测试 —— 一个**静态、自动更新**的看板，跨各家 LLM API 测量并对比**吞吐 (TPS)** 与**延迟 (TTFT)**。
+
+对每个配置的模型跑**同一个固定任务**，记录每秒输出 token 数与首 token 延迟，把可筛选、可对比的看板发布到 **Cloudflare Pages**，并由定时 CI 自动保持更新。**无需服务器、无需运维数据库**：数据以追加式 NDJSON 存在仓库里（git 即数据库），发布的站点是纯静态。
+
+## 功能
+
+- 📊 **性能图谱** —— TTFT × TPS 散点图，**左上角**最优（低延迟 + 高吞吐）；可切换对数刻度。
+- 🔬 **对比矩阵** —— 每列可排序，可跨供应商对比同一模型（如 GPT‑5.5 的四个 ChatGPT 档、Claude 的 AWS/Windsurf/Max 路由）；支持 **CSV 导出**当前视图。
+- 🔎 **供应商筛选 + 模型搜索** —— 所有视图实时联动。
+- 🎯 **选中联动** —— 点击点或表格行，在各视图高亮该模型，并在时间线中单独显示。
+- 📈 **吞吐时间线** —— 自动只显示最快 N 个，避免线条糊成一团。
+- 🌐 **双语 UI**（中文 / English），按浏览器自动切换。
+- 🤖 **全自动** —— CI 定时重跑、回提交数据、重建、重新部署。
+- 🔒 **密钥安全** —— key 只存在环境变量 / CI secrets，代码与发布产物均不含密钥。
+- 🪶 **零运行时依赖** —— 仅用 Node 内置能力（`fetch`/`fs`/`http`）。
+
+## 工作原理
+
+```
+┌─ CI runner（每小时）────────────────────────────────────┐
+│  node benchmark.js   → 追加 data/results.ndjson           │
+│  git commit & push   → 历史留存在仓库                     │
+│  node build.js       → dist/（index.html + data/*.json）  │
+│  wrangler pages deploy dist  → Cloudflare Pages（静态）   │
+└───────────────────────────────────────────────────────────┘
+```
+
+只有 `dist/` 被上传到 Pages，密钥永不进入公开站点。
+
+## 本地使用
+
+需 **Node ≥ 20.6**（用到内置 `fetch` 与 `--env-file-if-exists`）。
+
+```bash
+git clone https://github.com/<你>/openbenchmark.git
+cd openbenchmark
+cp .env.example .env        # 至少填一个供应商 key
+npm run benchmark           # 跑一轮 → 写入 data/results.ndjson
+npm run dev                 # 构建 + 本地预览 → http://localhost:3456
+```
+
+| 命令 | 作用 |
+| --- | --- |
+| `npm run benchmark` | 跑一轮基准（自动加载 `.env`）。 |
+| `npm run build` | 由 `data/results.ndjson` 生成 `dist/`。 |
+| `npm run serve` | 本地静态服务 `dist/`。 |
+| `npm run dev` | 构建 + 服务。 |
+| `npm run stats` | 终端打印汇总表（`node stats.js --json` 输出原始 JSON）。 |
+
+## 配置
+
+**供应商 / 模型**：编辑 `benchmark.js` 的 `PROVIDERS` 数组（`apiType` 为 `openai` 或 `anthropic`；无 key 的供应商自动跳过）。
+**API key**：本地写进 `.env`（见 `.env.example`），CI 写进 secrets。URL 非机密，自带公开默认值，可用 `*_URL` 覆盖。
+**调优**：`RETENTION_DAYS`（默认 30，历史保留天数；0=全留）、`CONCURRENCY`（默认 6）、1 小时内已测过的模型自动跳过。
+
+## 部署到 Cloudflare Pages
+
+1. **建 API Token**：Cloudflare → 我的资料 → API 令牌 → 创建令牌；用「编辑 Cloudflare Workers」模板，或自定义含 **账户 → Cloudflare Pages → 编辑** 权限。得到 `CLOUDFLARE_API_TOKEN`。
+2. **取 Account ID**：Cloudflare → Workers & Pages 右侧栏的账户 ID，即 `CLOUDFLARE_ACCOUNT_ID`。
+3. **命名项目**：改 `wrangler.toml` 的 `name`（默认 `openbenchmark`），即 `https://<name>.pages.dev`。
+4. **首次手动部署**（可选）：
+   ```bash
+   export CLOUDFLARE_API_TOKEN=...
+   npm run build
+   npx wrangler pages project create openbenchmark --production-branch=main
+   npx wrangler pages deploy dist --project-name=openbenchmark --branch=main
+   ```
+5. **绑定域名**：Cloudflare → 你的 Pages 项目 → 自定义域。
+
+> 为什么用 `wrangler` 而非 Pages 的 Git 集成？因为本项目每次跑完要把数据回提交进仓库，并由 CI 主导部署以获得完全控制；Direct Upload 也兼容任意 Git 平台。
+
+## 用 GitHub Actions 自动化
+
+工作流 `.github/workflows/benchmark.yml` 定时执行：**跑基准 → 回提交数据 → 构建 → 部署**。
+
+1. **加仓库 secrets**：Settings → Secrets and variables → Actions：
+   - `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`（必需）
+   - 各供应商 key（`OPENCODE_GO_KEY`、`ZHIPU_API_KEY` …，只加你用的；完整名单见 `.env.example`）
+2. **⚠️ 允许工作流回写仓库**：Settings → Actions → General → Workflow permissions → 选 **「Read and write permissions」** → 保存。（这样内置 `GITHUB_TOKEN` 才能 push 回数据，**无需 PAT**。该仓库设置是上限，若设为只读则 push 步骤会失败。）
+3. **费用**：**公开**仓库的 Actions 分钟数**免费**，每小时跑也不花钱；私有仓库消耗额度。
+4. **触发**：定时 cron（可改）/ Actions 页手动 Run workflow / 推送到 `main`。
+   > GitHub 在仓库 60 天无活动后会停用定时任务，推一次或手动跑即可重新激活。
+
+## 数据格式
+
+`data/results.ndjson` 每行一条 JSON（`run_at` 为 UTC `YYYY-MM-DD HH:MM:SS`）。**重置历史**：清空文件、提交、再跑：
+```bash
+: > data/results.ndjson && git commit -am "data: reset" && git push   # 然后到 Actions 手动 Run workflow
+```
+
+## 指标
+
+| 指标 | 含义 |
+| --- | --- |
+| **TPS** | 每秒输出 token 数，越高解码越快（统一 `max_tokens=2048`）。 |
+| **TTFT** | 首 token 延迟（ms）：网络往返 + 预处理 + 首 token，决定交互响应感。 |
+| **P50/P95/P99** | 百分位，越接近均值越稳定。 |
+| **性能图谱** | 左上 = 低延迟 + 高吞吐 = 最优。 |
+
+## 局限
+
+- TTFT/TPS 是**从 CI runner 所在网络位置**测得（GitHub 托管 runner 在云端），不代表你终端用户的体验；请将数值理解为**同一观测点下的相对对比**，而非绝对 SLA。需精确位置可用自托管 runner。
+- token 数优先用供应商返回的 `usage`，否则用 ~4 字符/token 估算。
+- 第三方中转可能限流/间歇失败；失败记录会保留（含错误）但不计入统计。
+
+## 安全
+
+- API key 仅来自环境变量 / CI secrets，代码中无任何硬编码默认值。
+- `.gitignore` 排除 `.env`、`*.db`、`dist/`。
+- 仅构建后的 `dist/` 发布到 Pages；只含聚合指标，不含密钥，也不含原始上游错误体（写入前已脱敏，且不进入发布的 JSON）。
+
+## 许可
 
 [MIT](LICENSE)

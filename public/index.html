@@ -194,7 +194,10 @@ tbody tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
     <div class="panel">
       <div class="panel-head">
         <span class="panel-title" data-i18n="map-title">性能图谱</span>
-        <span class="panel-sub" data-i18n="map-sub">TTFT (ms) × 吞吐 (tok/s)</span>
+        <span style="display:flex;align-items:center;gap:10px">
+          <span class="panel-sub" data-i18n="map-sub">TTFT (ms) × 吞吐 (tok/s)</span>
+          <button class="btn" id="logBtn" onclick="toggleLogX()">X 线性</button>
+        </span>
       </div>
       <div class="chart-wrap">
         <div class="ideal-tag" data-i18n="map-ideal">理想区 · 快且低延迟</div>
@@ -216,7 +219,10 @@ tbody tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
   <div class="panel">
     <div class="panel-head">
       <span class="panel-title" data-i18n="tbl-title">对比矩阵</span>
-      <span class="panel-sub" id="tblCount"></span>
+      <span style="display:flex;align-items:center;gap:10px">
+        <span class="panel-sub" id="tblCount"></span>
+        <button class="btn" id="csvBtn" onclick="exportCSV()" data-i18n="export-csv">⬇ CSV</button>
+      </span>
     </div>
     <div class="table-scroll">
       <table>
@@ -266,7 +272,7 @@ const pColor = (p) => PROVIDER_COLORS[p] || '#7aa2ff';
 const key = (m) => m.provider + '|' + m.model_id;
 
 // ============ state ============
-const S = { q: '', active: new Set(), grouped: false, sort: { key: 'tps', dir: 'desc' }, sel: new Set() };
+const S = { q: '', active: new Set(), grouped: false, sort: { key: 'tps', dir: 'desc' }, sel: new Set(), logX: false };
 let DATA = { stats: [], totals: null, ts: [] };
 let mapChart, tsChart;
 
@@ -346,6 +352,7 @@ function renderChips() {
 
 // ============ performance map (scatter) ============
 function renderMap() {
+  const lb = document.getElementById('logBtn'); if (lb) { lb.classList.toggle('on', S.logX); lb.textContent = _t(S.logX ? 'x-log' : 'x-linear'); }
   const list = filtered().filter(m => m.runs > 0 && m.stats.ttft.mean > 0);
   const byProv = {};
   for (const m of list) (byProv[m.provider] ||= []).push(m);
@@ -372,7 +379,7 @@ function renderMap() {
           callbacks: { title: c => c[0].raw._m.model_name, label: c => { const m = c.raw._m; return [`${m.provider}`, `TPS ${f1(m.stats.tps.mean)}  ·  TTFT ${f0(m.stats.ttft.mean)}ms`, `${m.runs} runs`]; } } }
       },
       scales: {
-        x: { title: { display: true, text: _t('axis-ttft'), color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 } }, ticks: { color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 }, callback: v => v + 'ms' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        x: { type: S.logX ? 'logarithmic' : 'linear', title: { display: true, text: _t('axis-ttft'), color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 } }, ticks: { color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 }, callback: v => v + 'ms' }, grid: { color: 'rgba(255,255,255,0.04)' } },
         y: { title: { display: true, text: _t('axis-tps'), color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 } }, beginAtZero: true, ticks: { color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
       }
     }
@@ -493,6 +500,23 @@ function toggleSel(m) {
 }
 function clearSelection() { S.sel.clear(); document.getElementById('clearSelBtn').style.display = 'none'; renderMap(); renderTimeline(); renderTable(); }
 function toggleGroup() { S.grouped = !S.grouped; document.getElementById('groupBtn').classList.toggle('on', S.grouped); renderTable(); }
+function toggleLogX() { S.logX = !S.logX; renderMap(); }
+
+function exportCSV() {
+  const rows = sortList(filtered());
+  const head = ['provider', 'model_id', 'model_name', 'runs', 'tps_mean', 'tps_p50', 'tps_p95', 'tps_p99', 'tps_max', 'ttft_mean', 'ttft_p95', 'last_run'];
+  const esc = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lines = [head.join(',')];
+  for (const m of rows) {
+    const t = m.stats.tps, tt = m.stats.ttft;
+    lines.push([m.provider, m.model_id, m.model_name, m.runs, t.mean, t.p50, t.p95, t.p99, t.max, tt.mean, tt.p95, m.last_run].map(esc).join(','));
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'openbenchmark.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
 
 function renderAll() { renderKPIs(); renderChips(); renderMap(); renderTimeline(); renderTable(); }
 
@@ -530,6 +554,7 @@ const i18n = {
     'tagline': 'LLM 推理遥测', 'status-running': '运行中', 'refresh': '↻ 刷新', 'refreshing': '刷新中…', 'updated': '更新于',
     'kpi-models': '模型', 'kpi-providers': '供应商', 'kpi-measurements': '累计测量', 'kpi-fastest': '最快 (TPS)', 'kpi-lowest-ttft': '最低延迟 (TTFT)',
     'search-ph': '筛选模型 / 供应商…', 'group-by-provider': '按供应商分组', 'clear-selection': '清除选择', 'models-unit': '个模型',
+    'x-linear': 'X 线性', 'x-log': 'X 对数', 'export-csv': '⬇ CSV',
     'map-title': '性能图谱', 'map-sub': 'TTFT (ms) × 吞吐 (tok/s)', 'map-ideal': '理想区 · 快且低延迟',
     'axis-ttft': '← TTFT 越低越好 (ms)', 'axis-tps': 'TPS 越高越好 (tok/s) ↑',
     'ts-title': '吞吐时间线', 'ts-cap': '显示最快 {n} / 共 {t}', 'ts-selected': '仅显示已选',
@@ -547,6 +572,7 @@ const i18n = {
     'tagline': 'LLM Inference Telemetry', 'status-running': 'Live', 'refresh': '↻ Refresh', 'refreshing': 'Refreshing…', 'updated': 'Updated',
     'kpi-models': 'Models', 'kpi-providers': 'Providers', 'kpi-measurements': 'Measurements', 'kpi-fastest': 'Fastest (TPS)', 'kpi-lowest-ttft': 'Lowest TTFT',
     'search-ph': 'filter models / providers…', 'group-by-provider': 'Group by provider', 'clear-selection': 'Clear selection', 'models-unit': 'models',
+    'x-linear': 'X linear', 'x-log': 'X log', 'export-csv': '⬇ CSV',
     'map-title': 'Performance Map', 'map-sub': 'TTFT (ms) × Throughput (tok/s)', 'map-ideal': 'Ideal · fast + responsive',
     'axis-ttft': '← TTFT lower is better (ms)', 'axis-tps': 'TPS higher is better (tok/s) ↑',
     'ts-title': 'Throughput Timeline', 'ts-cap': 'Top {n} of {t} shown', 'ts-selected': 'Selected only',
