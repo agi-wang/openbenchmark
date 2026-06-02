@@ -1,6 +1,6 @@
 # OpenBenchmark
 
-[![Benchmark & Deploy](https://github.com/agi-wang/openbenchmark/actions/workflows/benchmark.yml/badge.svg)](https://github.com/agi-wang/openbenchmark/actions/workflows/benchmark.yml)
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff?logo=githubactions&logoColor=white)](.github/workflows/benchmark.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-c6f135)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-openbenchmark.pages.dev-34dada)](https://openbenchmark.pages.dev)
 [![Node ≥20.6](https://img.shields.io/badge/node-%E2%89%A520.6-3fb950?logo=node.js&logoColor=white)](https://nodejs.org)
