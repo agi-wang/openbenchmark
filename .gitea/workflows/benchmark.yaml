@@ -1,5 +1,5 @@
 name: Benchmark & Deploy
-run-name: OpenBenchmark ${{ gitea.sha }}
+run-name: OpenBenchmark ${{ github.sha }}
 
 on:
   schedule:
@@ -14,6 +14,9 @@ concurrency:
   group: benchmark-deploy
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -21,8 +24,8 @@ jobs:
       - name: Checkout (需写权限以回提交数据)
         uses: actions/checkout@v4
         with:
-          # 带写权限的 PAT (PUSH_TOKEN secret), 用于把基准数据回提交到仓库
-          token: ${{ secrets.PUSH_TOKEN }}
+          # 使用 Gitea Actions 内置 job token 回提交数据, 无需额外 PAT。
+          token: ${{ secrets.GITEA_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
