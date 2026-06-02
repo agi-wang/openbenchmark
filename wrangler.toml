@@ -1,0 +1,9 @@
+# Cloudflare Pages — Direct Upload.
+# The CI deploys with `npx wrangler pages deploy dist`, which reads `name` below
+# as the Pages project. The project is created on first deploy; bind a custom
+# domain afterward in the Cloudflare dashboard.
+#
+# To rename the project, change `name` (no other edits needed).
+name = "openbenchmark"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-01-01"

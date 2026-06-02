@@ -1,0 +1,16 @@
+{
+  "name": "openbenchmark",
+  "version": "2.0.0",
+  "description": "Multi-provider LLM throughput benchmark — static dashboard published to Cloudflare Pages, fed by a scheduled CI runner.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "benchmark": "node --env-file-if-exists=.env benchmark.js",
+    "build": "node build.js",
+    "serve": "node server.js",
+    "dev": "node build.js && node server.js",
+    "stats": "node stats.js"
+  }
+}

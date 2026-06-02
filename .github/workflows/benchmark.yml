@@ -1,0 +1,75 @@
+name: Benchmark & Deploy
+
+on:
+  schedule:
+    - cron: '0 * * * *'        # hourly (UTC). Edit to taste.
+  workflow_dispatch:           # manual: Actions tab → Run workflow
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'data/results.ndjson'  # data commit-back must not re-trigger (avoid a loop)
+
+# Lets the built-in GITHUB_TOKEN push the data commit back.
+# NOTE: also set repo Settings → Actions → General → Workflow permissions
+#       to "Read and write permissions" (this block is capped by that setting).
+permissions:
+  contents: write
+
+concurrency:
+  group: benchmark-deploy
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # No install step — zero runtime dependencies.
+
+      - name: Run benchmark (appends data/results.ndjson)
+        run: node benchmark.js
+        env:
+          # Add only the providers you use; missing ones are skipped. See .env.example.
+          OPENCODE_GO_KEY: ${{ secrets.OPENCODE_GO_KEY }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          CHATGPT_FREE_KEY: ${{ secrets.CHATGPT_FREE_KEY }}
+          CHATGPT_PLUS_FAST_KEY: ${{ secrets.CHATGPT_PLUS_FAST_KEY }}
+          CHATGPT_PLUS_KEY: ${{ secrets.CHATGPT_PLUS_KEY }}
+          CHATGPT_PRO_KEY: ${{ secrets.CHATGPT_PRO_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CLAUDE_AWS_API_KEY: ${{ secrets.CLAUDE_AWS_API_KEY }}
+          CLAUDE_WS_API_KEY: ${{ secrets.CLAUDE_WS_API_KEY }}
+          CLAUDE_MAX_API_KEY: ${{ secrets.CLAUDE_MAX_API_KEY }}
+          RETENTION_DAYS: '30'
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/results.ndjson
+          if git diff --staged --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "data: benchmark run [skip ci]"
+            git push
+          fi
+
+      - name: Build static site
+        run: node build.js
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          PROJECT=$(node -p "(require('fs').readFileSync('wrangler.toml','utf8').match(/name\s*=\s*[\"']([^\"']+)[\"']/)||[])[1]||'openbenchmark'")
+          echo "Pages project: $PROJECT"
+          npx --yes wrangler@4 pages project create "$PROJECT" --production-branch=main 2>/dev/null || true
+          npx --yes wrangler@4 pages deploy dist --project-name="$PROJECT" --branch=main --commit-dirty=true

@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenBenchmark · LLM Inference Telemetry</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Expanded:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap');
+
+:root {
+  --bg: #0a0b0d;
+  --panel: #101216;
+  --panel2: #15181d;
+  --line: #21252c;
+  --line2: #2c313a;
+  --text: #e9ebee;
+  --text2: #969da7;
+  --text3: #5d646e;
+  --accent: #c6f135;        /* signal lime */
+  --accent-dim: #93b224;
+  --cyan: #34dada;
+  --amber: #ffb23e;
+  --red: #ff5d52;
+  --green: #5fdd8c;
+  --violet: #b48cff;
+  --blue: #7aa2ff;
+  --pink: #ff6fa5;
+  --orange: #ff8a4c;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --disp: 'Archivo Expanded', system-ui, sans-serif;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { -webkit-font-smoothing: antialiased; }
+body {
+  font-family: var(--mono);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(198,241,53,0.06), transparent 55%),
+    repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(255,255,255,0.013) 32px),
+    repeating-linear-gradient(90deg, transparent, transparent 31px, rgba(255,255,255,0.013) 32px),
+    var(--bg);
+  min-height: 100vh;
+}
+::selection { background: var(--accent); color: #000; }
+.container { max-width: 1520px; margin: 0 auto; padding: 22px 26px 60px; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* ---------- Header ---------- */
+.header { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 16px; border-bottom: 1px solid var(--line); gap: 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 13px; }
+.brand-mark {
+  width: 38px; height: 38px; flex-shrink: 0; border-radius: 7px;
+  background: var(--accent); color: #0a0b0d;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--disp); font-weight: 800; font-size: 19px;
+  box-shadow: 0 0 22px rgba(198,241,53,0.35);
+}
+.brand h1 { font-family: var(--disp); font-weight: 800; font-size: 1.28rem; letter-spacing: -0.01em; line-height: 1; }
+.brand h1 b { color: var(--accent); font-weight: 800; }
+.brand .tag { font-size: 0.62rem; letter-spacing: 0.34em; color: var(--text3); text-transform: uppercase; margin-top: 5px; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chip-status { display: inline-flex; align-items: center; gap: 7px; font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); border: 1px solid rgba(198,241,53,0.25); background: rgba(198,241,53,0.06); padding: 5px 11px; border-radius: 4px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.8s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+.updated { font-size: 0.66rem; color: var(--text3); letter-spacing: 0.04em; }
+.btn { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); background: var(--panel2); border: 1px solid var(--line); padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: all .14s; }
+.btn:hover { border-color: var(--line2); color: var(--text); }
+.btn.on { color: #000; background: var(--accent); border-color: var(--accent); }
+
+/* ---------- KPI strip ---------- */
+.kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 18px 0; }
+@media (max-width: 920px){ .kpis { grid-template-columns: repeat(2,1fr);} }
+.kpi { background: var(--panel); padding: 14px 16px; min-width: 0; }
+.kpi .k-label { font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text3); margin-bottom: 7px; }
+.kpi .k-val { font-size: 1.55rem; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }
+.kpi .k-sub { font-size: 0.66rem; color: var(--text2); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-accent { color: var(--accent); }
+.k-cyan { color: var(--cyan); }
+
+/* ---------- Control bar ---------- */
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.search { position: relative; flex: 1; min-width: 220px; }
+.search input { width: 100%; font-family: var(--mono); font-size: 0.8rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 9px 12px 9px 32px; outline: none; transition: border-color .14s; }
+.search input:focus { border-color: var(--accent-dim); }
+.search input::placeholder { color: var(--text3); }
+.search .ic { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 0.85rem; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.pchip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.68rem; color: var(--text2); background: var(--panel); border: 1px solid var(--line); padding: 5px 10px; border-radius: 20px; cursor: pointer; transition: all .14s; user-select: none; }
+.pchip:hover { border-color: var(--line2); }
+.pchip .pd { width: 8px; height: 8px; border-radius: 50%; }
+.pchip.off { opacity: 0.32; }
+.pchip.off .pd { background: var(--text3) !important; }
+
+/* ---------- Panels ---------- */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 18px; border-bottom: 1px solid var(--line); gap: 12px; flex-wrap: wrap; }
+.panel-title { font-family: var(--disp); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.panel-sub { font-size: 0.66rem; color: var(--text3); letter-spacing: 0.04em; }
+.grid2 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 16px; }
+@media (max-width: 1080px){ .grid2 { grid-template-columns: 1fr; } }
+
+.chart-wrap { position: relative; padding: 14px 16px 16px; }
+.chart-box { position: relative; width: 100%; }
+.map-box { height: 440px; }
+.ts-box { height: 320px; }
+.ideal-tag { position: absolute; left: 30px; top: 24px; font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); opacity: 0.8; pointer-events: none; }
+.ideal-tag::before { content: '◤ '; }
+
+/* ---------- Table ---------- */
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+thead th { position: sticky; top: 0; background: var(--panel2); z-index: 2; }
+th { text-align: right; padding: 10px 14px; font-weight: 500; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text3); border-bottom: 1px solid var(--line); white-space: nowrap; cursor: pointer; user-select: none; transition: color .12s; }
+th:hover { color: var(--text); }
+th.sorted { color: var(--accent); }
+th .arr { font-size: 0.7rem; }
+th:first-child, td:first-child { text-align: left; padding-left: 18px; }
+td { text-align: right; padding: 9px 14px; border-bottom: 1px solid rgba(33,37,44,0.6); white-space: nowrap; }
+tbody tr { cursor: pointer; transition: background .1s; }
+tbody tr:hover td { background: rgba(198,241,53,0.04); }
+tbody tr.sel td { background: rgba(198,241,53,0.07); }
+tbody tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.grp-row td { background: var(--panel2); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text2); padding: 7px 18px; }
+.mcell { display: flex; align-items: center; gap: 10px; }
+.mdot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.mname { font-weight: 500; color: var(--text); }
+.mprov { font-size: 0.62rem; color: var(--text3); }
+.barcell { position: relative; }
+.barcell .bar { position: absolute; left: 0; top: 6px; bottom: 6px; border-radius: 2px; opacity: 0.16; }
+.barcell .v { position: relative; font-weight: 600; }
+.fast { color: var(--accent); }
+.ok { color: var(--amber); }
+.slow { color: var(--red); }
+.muted { color: var(--text3); }
+.ttgood { color: var(--cyan); }
+.ttok { color: var(--amber); }
+.ttbad { color: var(--red); }
+
+/* ---------- Legend ---------- */
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px,1fr)); gap: 16px; padding: 16px 18px; font-family: var(--sans); }
+.legend h4 { font-family: var(--mono); font-size: 0.72rem; color: var(--text); margin-bottom: 4px; letter-spacing: 0.02em; }
+.legend p { font-size: 0.78rem; color: var(--text2); line-height: 1.5; }
+.legend code { font-family: var(--mono); background: var(--panel2); padding: 1px 5px; border-radius: 3px; font-size: 0.72rem; color: var(--accent); }
+
+/* ---------- Footer ---------- */
+.footer { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 18px; text-align: center; color: var(--text3); font-size: 0.7rem; }
+.frow { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px; }
+.frow + .frow { margin-top: 8px; }
+.frow.meta { opacity: 0.7; font-size: 0.66rem; }
+.footer strong { color: var(--text2); font-weight: 600; }
+.empty { text-align: center; color: var(--text3); padding: 30px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-mark">◢</div>
+      <div>
+        <h1>OPEN<b>BENCHMARK</b></h1>
+        <div class="tag" data-i18n="tagline">LLM Inference Telemetry</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="chip-status"><span class="dot"></span><span data-i18n="status-running">运行中</span></span>
+      <span class="updated" id="updated">—</span>
+      <button class="btn" id="langBtn" onclick="toggleLang()">ZH / EN</button>
+      <button class="btn" onclick="refresh()" data-i18n="refresh">↻ 刷新</button>
+    </div>
+  </header>
+
+  <!-- KPI strip -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="search">
+      <span class="ic">⌕</span>
+      <input id="search" type="text" autocomplete="off" data-i18n-ph="search-ph" placeholder="筛选模型 / 供应商…">
+    </div>
+    <div class="chips" id="provChips"></div>
+    <button class="btn" id="groupBtn" onclick="toggleGroup()" data-i18n="group-by-provider">按供应商分组</button>
+    <button class="btn" id="clearSelBtn" onclick="clearSelection()" style="display:none"></button>
+  </div>
+
+  <!-- Performance map + timeline -->
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title" data-i18n="map-title">性能图谱</span>
+        <span class="panel-sub" data-i18n="map-sub">TTFT (ms) × 吞吐 (tok/s)</span>
+      </div>
+      <div class="chart-wrap">
+        <div class="ideal-tag" data-i18n="map-ideal">理想区 · 快且低延迟</div>
+        <div class="chart-box map-box"><canvas id="mapChart"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title" data-i18n="ts-title">吞吐时间线</span>
+        <span class="panel-sub" id="tsSub"></span>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-box ts-box"><canvas id="tsChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title" data-i18n="tbl-title">对比矩阵</span>
+      <span class="panel-sub" id="tblCount"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Metrics legend -->
+  <div class="panel">
+    <div class="panel-head"><span class="panel-title" data-i18n="metrics-title">指标说明</span></div>
+    <div class="legend">
+      <div><h4>TPS · tokens/s</h4><p data-i18n="m-tps">每秒生成的输出 token 数，越高解码越快。统一 <code>max_tokens=2048</code>。</p></div>
+      <div><h4>TTFT · time to first token</h4><p data-i18n="m-ttft">请求到首个 token 的延迟，含网络往返与预处理，决定交互响应感。</p></div>
+      <div><h4>P50 / P95 / P99</h4><p data-i18n="m-p">百分位：P50 典型值，P95/P99 表示尾部稳定性，越接近均值越稳。</p></div>
+      <div><h4 data-i18n="m-map-h">性能图谱</h4><p data-i18n="m-map">散点越靠<strong>左上</strong>越好（低延迟 + 高吞吐）。点击点或表格行可跨视图高亮对比。</p></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="frow">
+      <span><span data-i18n="f-runs">累计测量</span> <strong id="fRuns" class="tnum">0</strong> <span data-i18n="f-times">次</span></span>
+      <span><span data-i18n="f-in">输入</span> <strong id="fIn" class="tnum">0</strong> tok</span>
+      <span><span data-i18n="f-out">输出</span> <strong id="fOut" class="tnum">0</strong> tok</span>
+      <span><span data-i18n="f-total">总计</span> <strong id="fTot" class="tnum">0</strong> tok</span>
+    </div>
+    <div class="frow meta">
+      <span data-i18n="f-storage">数据存于 Git 仓库</span>
+      <span data-i18n="f-auto">每小时自动运行</span>
+      <span><span data-i18n="f-providers">供应商</span> <strong id="fProv">—</strong></span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============ palette ============
+const PROVIDER_COLORS = {
+  'OpenCode Go': '#c6f135', 'Zhipu AI': '#34dada', 'ChatGPT Free': '#ff8a4c',
+  'ChatGPT Plus Fast': '#ffb23e', 'ChatGPT Plus': '#ff6fa5', 'ChatGPT Pro': '#ff5d52',
+  'DeepSeek Official': '#7aa2ff', 'MiniMax Official': '#b48cff', 'Gemini': '#5fdd8c',
+  'Claude AWS': '#e0b341', 'Claude Windsurf': '#ff9d6e', 'Claude Code Max': '#caa6ff',
+};
+const pColor = (p) => PROVIDER_COLORS[p] || '#7aa2ff';
+const key = (m) => m.provider + '|' + m.model_id;
+
+// ============ state ============
+const S = { q: '', active: new Set(), grouped: false, sort: { key: 'tps', dir: 'desc' }, sel: new Set() };
+let DATA = { stats: [], totals: null, ts: [] };
+let mapChart, tsChart;
+
+// ============ formatting ============
+const f1 = (n) => (n == null || isNaN(n)) ? '—' : (+n).toFixed(1);
+const f0 = (n) => (n == null || isNaN(n)) ? '—' : Math.round(+n).toLocaleString();
+const tpsCls = (v) => !v ? 'muted' : v > 80 ? 'fast' : v > 40 ? 'ok' : 'slow';
+const ttCls = (v) => !v ? 'muted' : v < 2000 ? 'ttgood' : v < 5000 ? 'ttok' : 'ttbad';
+
+// ============ sort columns ============
+const COLS = [
+  { key: 'model', label: 'model', i18n: 'th-model', get: m => m.model_name.toLowerCase(), num: false },
+  { key: 'runs', label: 'runs', i18n: 'th-runs', get: m => m.runs },
+  { key: 'tps', label: 'TPS', i18n: 'th-tps', get: m => m.stats.tps.mean },
+  { key: 'p50', label: 'P50', get: m => m.stats.tps.p50 },
+  { key: 'p95', label: 'P95', get: m => m.stats.tps.p95 },
+  { key: 'p99', label: 'P99', get: m => m.stats.tps.p99 },
+  { key: 'max', label: 'MAX', i18n: 'th-max', get: m => m.stats.tps.max },
+  { key: 'ttft', label: 'TTFT', i18n: 'th-ttft', get: m => m.stats.ttft.mean },
+  { key: 'ttft95', label: 'TTFT P95', get: m => m.stats.ttft.p95 },
+  { key: 'last', label: 'last', i18n: 'th-last', get: m => m.last_run || '' },
+];
+
+function filtered() {
+  const q = S.q.trim().toLowerCase();
+  return DATA.stats.filter(m => {
+    if (!S.active.has(m.provider)) return false;
+    if (q && !(m.model_name.toLowerCase().includes(q) || m.model_id.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+function sortList(list) {
+  const col = COLS.find(c => c.key === S.sort.key) || COLS[2];
+  const dir = S.sort.dir === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    const av = col.get(a), bv = col.get(b);
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+}
+
+// ============ KPIs ============
+function renderKPIs() {
+  const all = DATA.stats;
+  const withData = all.filter(s => s.runs > 0);
+  const fastest = withData.reduce((b, s) => (s.stats.tps.mean > (b?.stats.tps.mean || 0) ? s : b), null);
+  const ttCand = withData.filter(s => s.stats.ttft.mean > 0);
+  const lowest = ttCand.reduce((b, s) => (s.stats.ttft.mean < (b?.stats.ttft.mean || Infinity) ? s : b), null);
+  const provN = DATA.totals?.providers?.length || new Set(all.map(s => s.provider)).size;
+  const runs = DATA.totals?.total_runs ?? all.reduce((a, s) => a + s.runs, 0);
+  const cards = [
+    { l: _t('kpi-models'), v: all.length, c: '' },
+    { l: _t('kpi-providers'), v: provN, c: '' },
+    { l: _t('kpi-measurements'), v: f0(runs), c: '' },
+    { l: _t('kpi-fastest'), v: f1(fastest?.stats.tps.mean), c: 'k-accent', sub: fastest ? fastest.model_name + ' · ' + fastest.provider : '' },
+    { l: _t('kpi-lowest-ttft'), v: lowest ? f0(lowest.stats.ttft.mean) + 'ms' : '—', c: 'k-cyan', sub: lowest ? lowest.model_name + ' · ' + lowest.provider : '' },
+  ];
+  document.getElementById('kpis').innerHTML = cards.map(c =>
+    `<div class="kpi"><div class="k-label">${c.l}</div><div class="k-val tnum ${c.c}">${c.v}</div>${c.sub ? `<div class="k-sub">${c.sub}</div>` : '<div class="k-sub">&nbsp;</div>'}</div>`
+  ).join('');
+}
+
+// ============ provider chips ============
+function renderChips() {
+  const provs = DATA.totals?.providers?.length ? DATA.totals.providers : [...new Set(DATA.stats.map(s => s.provider))].sort();
+  document.getElementById('provChips').innerHTML = provs.map(p =>
+    `<span class="pchip ${S.active.has(p) ? '' : 'off'}" data-p="${encodeURIComponent(p)}"><span class="pd" style="background:${pColor(p)}"></span>${p}</span>`
+  ).join('');
+  document.querySelectorAll('.pchip').forEach(el => el.onclick = () => {
+    const p = decodeURIComponent(el.dataset.p);
+    if (S.active.has(p)) S.active.delete(p); else S.active.add(p);
+    if (S.active.size === 0) provs.forEach(x => S.active.add(x)); // never empty
+    renderAll();
+  });
+}
+
+// ============ performance map (scatter) ============
+function renderMap() {
+  const list = filtered().filter(m => m.runs > 0 && m.stats.ttft.mean > 0);
+  const byProv = {};
+  for (const m of list) (byProv[m.provider] ||= []).push(m);
+  const anySel = S.sel.size > 0;
+  const datasets = Object.entries(byProv).map(([prov, items]) => ({
+    label: prov,
+    data: items.map(m => ({ x: m.stats.ttft.mean, y: m.stats.tps.mean, _m: m })),
+    backgroundColor: items.map(m => anySel ? (S.sel.has(key(m)) ? pColor(prov) : 'rgba(150,157,167,0.18)') : pColor(prov) + 'cc'),
+    borderColor: items.map(m => S.sel.has(key(m)) ? '#fff' : pColor(prov)),
+    borderWidth: items.map(m => S.sel.has(key(m)) ? 2 : 1),
+    pointRadius: items.map(m => S.sel.has(key(m)) ? 8 : 5),
+    pointHoverRadius: 9,
+  }));
+  if (mapChart) mapChart.destroy();
+  mapChart = new Chart(document.getElementById('mapChart'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      onClick: (e, els) => { if (els.length) { const d = mapChart.data.datasets[els[0].datasetIndex].data[els[0].index]; toggleSel(d._m); } },
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#15181d', borderColor: '#2c313a', borderWidth: 1, padding: 11, titleFont: { family: "'IBM Plex Mono'" }, bodyFont: { family: "'IBM Plex Mono'" },
+          callbacks: { title: c => c[0].raw._m.model_name, label: c => { const m = c.raw._m; return [`${m.provider}`, `TPS ${f1(m.stats.tps.mean)}  ·  TTFT ${f0(m.stats.ttft.mean)}ms`, `${m.runs} runs`]; } } }
+      },
+      scales: {
+        x: { title: { display: true, text: _t('axis-ttft'), color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 } }, ticks: { color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 }, callback: v => v + 'ms' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { title: { display: true, text: _t('axis-tps'), color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 } }, beginAtZero: true, ticks: { color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      }
+    }
+  });
+}
+
+// ============ timeline ============
+function renderTimeline() {
+  let list = filtered();
+  const anySel = S.sel.size > 0;
+  if (anySel) list = list.filter(m => S.sel.has(key(m)));
+  list = [...list].sort((a, b) => b.stats.tps.mean - a.stats.tps.mean);
+  const CAP = 14;
+  const capped = list.length > CAP && !anySel;
+  const show = capped ? list.slice(0, CAP) : list;
+  const showKeys = new Set(show.map(key));
+  document.getElementById('tsSub').textContent = capped ? _t('ts-cap').replace('{n}', CAP).replace('{t}', list.length) : (anySel ? _t('ts-selected') : '');
+
+  const series = {};
+  for (const r of DATA.ts) {
+    const k = r.provider + '|' + r.model_id;
+    if (!showKeys.has(k)) continue;
+    (series[k] ||= { name: r.model_name, prov: r.provider, pts: [] }).pts.push({ x: Date.parse(r.run_at.replace(' ', 'T') + 'Z'), y: r.tps });
+  }
+  const datasets = Object.values(series).map(s => ({
+    label: s.name, data: s.pts.sort((a, b) => a.x - b.x),
+    borderColor: pColor(s.prov), backgroundColor: pColor(s.prov) + '14',
+    tension: 0.3, pointRadius: 0, pointHoverRadius: 4, borderWidth: 1.5, spanGaps: true,
+  }));
+  if (tsChart) tsChart.destroy();
+  tsChart = new Chart(document.getElementById('tsChart'), {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { intersect: false, mode: 'nearest' },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#969da7', font: { family: "'IBM Plex Mono'", size: 9 }, usePointStyle: true, pointStyleWidth: 8, padding: 8, boxHeight: 6 } },
+        tooltip: { backgroundColor: '#15181d', borderColor: '#2c313a', borderWidth: 1, titleFont: { family: "'IBM Plex Mono'" }, bodyFont: { family: "'IBM Plex Mono'" },
+          callbacks: { title: c => new Date(c[0].parsed.x).toLocaleString(), label: c => `${c.dataset.label}: ${f1(c.parsed.y)} tok/s` } }
+      },
+      scales: {
+        x: { type: 'linear', ticks: { color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 9 }, maxTicksLimit: 8, callback: v => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: '#5d646e', font: { family: "'IBM Plex Mono'", size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      }
+    }
+  });
+}
+
+// ============ table ============
+function renderHead() {
+  document.getElementById('thead').innerHTML = COLS.map(c => {
+    const lbl = c.i18n ? _t(c.i18n) : c.label;
+    const on = S.sort.key === c.key;
+    const arr = on ? (S.sort.dir === 'asc' ? '▲' : '▼') : '';
+    return `<th class="${on ? 'sorted' : ''}" data-k="${c.key}">${lbl} <span class="arr">${arr}</span></th>`;
+  }).join('');
+  document.querySelectorAll('#thead th').forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (S.sort.key === k) S.sort.dir = S.sort.dir === 'asc' ? 'desc' : 'asc';
+    else { S.sort.key = k; S.sort.dir = (k === 'model' || k === 'last') ? 'asc' : 'desc'; }
+    renderTable();
+  });
+}
+function rowHTML(m, maxTps) {
+  const t = m.stats.tps, tt = m.stats.ttft;
+  const pct = Math.max(2, (t.mean / maxTps) * 100);
+  const c = pColor(m.provider);
+  return `<tr class="${S.sel.has(key(m)) ? 'sel' : ''}" data-k="${encodeURIComponent(key(m))}">
+    <td><div class="mcell"><span class="mdot" style="background:${c}"></span><span><span class="mname">${m.model_name}</span> <span class="mprov">${m.model_id}</span></span></div></td>
+    <td class="tnum muted">${m.runs}</td>
+    <td class="barcell tnum"><span class="bar" style="width:${pct}%;background:${c}"></span><span class="v ${tpsCls(t.mean)}">${f1(t.mean)}</span></td>
+    <td class="tnum ${tpsCls(t.p50)}">${f1(t.p50)}</td>
+    <td class="tnum ${tpsCls(t.p95)}">${f1(t.p95)}</td>
+    <td class="tnum ${tpsCls(t.p99)}">${f1(t.p99)}</td>
+    <td class="tnum muted">${f1(t.max)}</td>
+    <td class="tnum ${ttCls(tt.mean)}">${f0(tt.mean)}ms</td>
+    <td class="tnum ${ttCls(tt.p95)}">${f0(tt.p95)}ms</td>
+    <td class="muted" style="font-size:0.66rem">${m.last_run ? new Date(m.last_run.replace(' ', 'T') + 'Z').toLocaleString() : '—'}</td>
+  </tr>`;
+}
+function renderTable() {
+  renderHead();
+  const list = filtered();
+  const maxTps = Math.max(1, ...DATA.stats.map(s => s.stats.tps.mean));
+  let html = '';
+  if (list.length === 0) {
+    html = `<tr><td colspan="${COLS.length}" class="empty">${_t('no-data')}</td></tr>`;
+  } else if (S.grouped) {
+    const groups = {};
+    for (const m of list) (groups[m.provider] ||= []).push(m);
+    const order = (DATA.totals?.providers || Object.keys(groups));
+    for (const p of order) {
+      if (!groups[p]) continue;
+      html += `<tr class="grp-row"><td colspan="${COLS.length}"><span class="mdot" style="background:${pColor(p)};display:inline-block;margin-right:8px"></span>${p} · ${groups[p].length}</td></tr>`;
+      html += sortList(groups[p]).map(m => rowHTML(m, maxTps)).join('');
+    }
+  } else {
+    html = sortList(list).map(m => rowHTML(m, maxTps)).join('');
+  }
+  document.getElementById('tbody').innerHTML = html;
+  document.querySelectorAll('#tbody tr[data-k]').forEach(tr => tr.onclick = () => {
+    const k = decodeURIComponent(tr.dataset.k);
+    const m = DATA.stats.find(s => key(s) === k);
+    if (m) toggleSel(m);
+  });
+  document.getElementById('tblCount').textContent = `${list.length} / ${DATA.stats.length} ${_t('models-unit')}`;
+}
+
+// ============ selection ============
+function toggleSel(m) {
+  const k = key(m);
+  if (S.sel.has(k)) S.sel.delete(k); else S.sel.add(k);
+  const btn = document.getElementById('clearSelBtn');
+  btn.style.display = S.sel.size ? '' : 'none';
+  btn.textContent = `✕ ${_t('clear-selection')} (${S.sel.size})`;
+  renderMap(); renderTimeline(); renderTable();
+}
+function clearSelection() { S.sel.clear(); document.getElementById('clearSelBtn').style.display = 'none'; renderMap(); renderTimeline(); renderTable(); }
+function toggleGroup() { S.grouped = !S.grouped; document.getElementById('groupBtn').classList.toggle('on', S.grouped); renderTable(); }
+
+function renderAll() { renderKPIs(); renderChips(); renderMap(); renderTimeline(); renderTable(); }
+
+// ============ data ============
+async function refresh() {
+  document.getElementById('updated').textContent = _t('refreshing');
+  const [stats, ts, totals] = await Promise.all([
+    fetch('data/stats.json').then(r => r.json()).catch(() => []),
+    fetch('data/timeseries.json').then(r => r.json()).catch(() => []),
+    fetch('data/totals.json').then(r => r.json()).catch(() => null),
+  ]);
+  DATA = { stats, ts, totals };
+  if (S.active.size === 0) {
+    const provs = totals?.providers?.length ? totals.providers : [...new Set(stats.map(s => s.provider))];
+    provs.forEach(p => S.active.add(p));
+  }
+  renderAll();
+  // footer
+  if (totals) {
+    document.getElementById('fRuns').textContent = (totals.total_runs || 0).toLocaleString();
+    document.getElementById('fIn').textContent = (totals.total_input_tokens || 0).toLocaleString();
+    document.getElementById('fOut').textContent = (totals.total_output_tokens || 0).toLocaleString();
+    document.getElementById('fTot').textContent = (totals.total_tokens_all || 0).toLocaleString();
+    if (totals.providers) document.getElementById('fProv').textContent = totals.providers.join(' · ');
+    const when = totals.generated_at ? new Date(totals.generated_at) : new Date();
+    document.getElementById('updated').textContent = _t('updated') + ' ' + when.toLocaleString();
+  } else {
+    document.getElementById('updated').textContent = new Date().toLocaleString();
+  }
+}
+
+// ============ i18n ============
+const i18n = {
+  zh: {
+    'tagline': 'LLM 推理遥测', 'status-running': '运行中', 'refresh': '↻ 刷新', 'refreshing': '刷新中…', 'updated': '更新于',
+    'kpi-models': '模型', 'kpi-providers': '供应商', 'kpi-measurements': '累计测量', 'kpi-fastest': '最快 (TPS)', 'kpi-lowest-ttft': '最低延迟 (TTFT)',
+    'search-ph': '筛选模型 / 供应商…', 'group-by-provider': '按供应商分组', 'clear-selection': '清除选择', 'models-unit': '个模型',
+    'map-title': '性能图谱', 'map-sub': 'TTFT (ms) × 吞吐 (tok/s)', 'map-ideal': '理想区 · 快且低延迟',
+    'axis-ttft': '← TTFT 越低越好 (ms)', 'axis-tps': 'TPS 越高越好 (tok/s) ↑',
+    'ts-title': '吞吐时间线', 'ts-cap': '显示最快 {n} / 共 {t}', 'ts-selected': '仅显示已选',
+    'tbl-title': '对比矩阵',
+    'th-model': '模型', 'th-runs': '次数', 'th-tps': '平均 TPS', 'th-max': '峰值', 'th-ttft': 'TTFT 均值', 'th-last': '最后运行',
+    'metrics-title': '指标说明',
+    'm-tps': '每秒生成的输出 token 数，越高解码越快。统一 max_tokens=2048。',
+    'm-ttft': '请求到首个 token 的延迟，含网络往返与预处理，决定交互响应感。',
+    'm-p': '百分位：P50 典型值，P95/P99 表示尾部稳定性，越接近均值越稳。',
+    'm-map-h': '性能图谱', 'm-map': '散点越靠左上越好（低延迟 + 高吞吐）。点击点或表格行可跨视图高亮对比。',
+    'f-runs': '累计测量', 'f-times': '次', 'f-in': '输入', 'f-out': '输出', 'f-total': '总计',
+    'f-storage': '数据存于 Git 仓库', 'f-auto': '每小时自动运行', 'f-providers': '供应商', 'no-data': '暂无数据',
+  },
+  en: {
+    'tagline': 'LLM Inference Telemetry', 'status-running': 'Live', 'refresh': '↻ Refresh', 'refreshing': 'Refreshing…', 'updated': 'Updated',
+    'kpi-models': 'Models', 'kpi-providers': 'Providers', 'kpi-measurements': 'Measurements', 'kpi-fastest': 'Fastest (TPS)', 'kpi-lowest-ttft': 'Lowest TTFT',
+    'search-ph': 'filter models / providers…', 'group-by-provider': 'Group by provider', 'clear-selection': 'Clear selection', 'models-unit': 'models',
+    'map-title': 'Performance Map', 'map-sub': 'TTFT (ms) × Throughput (tok/s)', 'map-ideal': 'Ideal · fast + responsive',
+    'axis-ttft': '← TTFT lower is better (ms)', 'axis-tps': 'TPS higher is better (tok/s) ↑',
+    'ts-title': 'Throughput Timeline', 'ts-cap': 'Top {n} of {t} shown', 'ts-selected': 'Selected only',
+    'tbl-title': 'Comparison Matrix',
+    'th-model': 'Model', 'th-runs': 'Runs', 'th-tps': 'Avg TPS', 'th-max': 'Max', 'th-ttft': 'Avg TTFT', 'th-last': 'Last run',
+    'metrics-title': 'Metrics',
+    'm-tps': 'Output tokens generated per second. Higher = faster decode. All runs use max_tokens=2048.',
+    'm-ttft': 'Latency from request to first token. Includes network round-trip & preprocessing.',
+    'm-p': 'Percentiles: P50 typical, P95/P99 tail stability. Closer to mean = more consistent.',
+    'm-map-h': 'Performance Map', 'm-map': 'Top-left is best (low latency + high throughput). Click a point or row to highlight across views.',
+    'f-runs': 'Measurements', 'f-times': '', 'f-in': 'Input', 'f-out': 'Output', 'f-total': 'Total',
+    'f-storage': 'Data stored in Git', 'f-auto': 'Auto-run hourly', 'f-providers': 'Providers', 'no-data': 'No data',
+  },
+};
+function detectLang() { for (const l of (navigator.languages || [navigator.language || 'zh'])) { if (l.startsWith('zh')) return 'zh'; if (l.startsWith('en')) return 'en'; } return 'zh'; }
+let currentLang = detectLang();
+function _t(k) { return (i18n[currentLang] || i18n.zh)[k] ?? k; }
+function applyLang() {
+  const d = i18n[currentLang] || i18n.zh;
+  document.querySelectorAll('[data-i18n]').forEach(el => { const k = el.dataset.i18n; if (d[k] !== undefined) el.innerHTML = d[k]; });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { const k = el.dataset.i18nPh; if (d[k] !== undefined) el.placeholder = d[k]; });
+  document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
+  document.getElementById('langBtn').textContent = currentLang === 'zh' ? 'ZH / EN' : 'EN / ZH';
+  if (DATA.stats.length) renderAll();
+}
+function toggleLang() { currentLang = currentLang === 'zh' ? 'en' : 'zh'; applyLang(); if (DATA.totals?.providers) document.getElementById('fProv').textContent = DATA.totals.providers.join(' · '); }
+
+// ============ boot ============
+document.getElementById('search').addEventListener('input', e => { S.q = e.target.value; renderTable(); renderMap(); renderTimeline(); });
+applyLang();
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>
