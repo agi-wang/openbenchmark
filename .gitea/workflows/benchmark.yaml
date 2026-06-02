@@ -35,7 +35,12 @@ jobs:
       # 无运行时依赖, 无需 npm install。
 
       - name: Run benchmark (追加 data/results.ndjson)
-        run: node benchmark.js
+        run: |
+          if [ -z "${OPENCODE_GO_KEY}${ZHIPU_API_KEY}${CHATGPT_FREE_KEY}${CHATGPT_PLUS_FAST_KEY}${CHATGPT_PLUS_KEY}${CHATGPT_PRO_KEY}${DEEPSEEK_API_KEY}${MINIMAX_API_KEY}${GEMINI_API_KEY}${CLAUDE_AWS_API_KEY}${CLAUDE_WS_API_KEY}${CLAUDE_MAX_API_KEY}" ]; then
+            echo "::warning::No provider API keys configured; skipping benchmark and deploying existing data."
+            exit 0
+          fi
+          node benchmark.js
         env:
           OPENCODE_GO_KEY: ${{ secrets.OPENCODE_GO_KEY }}
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
