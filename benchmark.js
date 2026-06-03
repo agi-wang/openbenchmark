@@ -249,6 +249,9 @@ const PROMPTS = [
 
 const TIMEOUT_MS = 180000; // 3 min for longer writing task
 const CONCURRENCY = 6; // max parallel tests
+// Hard cap on generated output. Throughput (TPS) only needs enough tokens to
+// measure steady-state speed; 512 is plenty and keeps spend bounded.
+const MAX_OUTPUT_TOKENS = 512;
 // Cap accumulated history so the committed NDJSON stays bounded. 0 = keep all.
 // Robust against misconfiguration: unset/empty/non-numeric all fall back to 30.
 const RETENTION_DAYS = (() => {
@@ -257,8 +260,11 @@ const RETENTION_DAYS = (() => {
   const n = Number(raw);
   return Number.isFinite(n) ? n : 30;
 })();
-// Skip a model if it was successfully measured within this window.
-const RECENT_WINDOW_MS = 60 * 60 * 1000;
+// Skip a model if it was successfully measured within this window. Keep this
+// SHORTER than the cron interval (currently every 6h) so each scheduled run
+// still re-measures everything, while push/manual reruns within the window
+// reuse recent results instead of burning quota.
+const RECENT_WINDOW_MS = 5 * 60 * 60 * 1000;
 
 // "YYYY-MM-DD HH:MM:SS" in UTC — matches the legacy SQLite datetime('now') format
 // so existing front-end date parsing keeps working unchanged.
@@ -293,11 +299,15 @@ async function streamAll(modelId, prompt, apiBase, apiKey, apiType, signal, opts
   let url, body, headers;
   if (isAnthropic) {
     url = `${apiBase}/messages`;
-    body = JSON.stringify({ model: modelId, max_tokens: 2048, messages: [{ role: 'user', content: prompt }], stream: true });
+    body = JSON.stringify({ model: modelId, max_tokens: MAX_OUTPUT_TOKENS, messages: [{ role: 'user', content: prompt }], stream: true });
     headers = { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' };
   } else {
     url = `${apiBase}/chat/completions`;
-    body = JSON.stringify({ model: modelId, messages: [{ role: 'user', content: prompt }], max_tokens: 2048, temperature: 0.7, stream: true, ...(opts.serviceTier ? { service_tier: opts.serviceTier } : {}) });
+    // Send both: legacy `max_tokens` for older/direct endpoints, and
+    // `max_completion_tokens` for OpenAI reasoning models (GPT-5.x, Gemini-3
+    // compat, …) which silently ignore `max_tokens`. Relays accept whichever
+    // they understand; sending both caps every backend.
+    body = JSON.stringify({ model: modelId, messages: [{ role: 'user', content: prompt }], max_tokens: MAX_OUTPUT_TOKENS, max_completion_tokens: MAX_OUTPUT_TOKENS, temperature: 0.7, stream: true, ...(opts.serviceTier ? { service_tier: opts.serviceTier } : {}) });
     headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
   }
 

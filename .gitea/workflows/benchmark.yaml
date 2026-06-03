@@ -3,7 +3,7 @@ run-name: OpenBenchmark ${{ github.sha }}
 
 on:
   schedule:
-    - cron: '0 * * * *'        # 每小时
+    - cron: '0 */6 * * *'      # 每 6 小时（与 benchmark.js 的 RECENT_WINDOW_MS=5h 配套）
   push:
     branches: [main]
     paths-ignore:
